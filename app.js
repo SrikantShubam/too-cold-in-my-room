@@ -63,12 +63,30 @@ const ACCENT_COLORS = {
     }
 };
 
-let state = { indoor: [], outdoor: null, charts: {} };
+// Time ranges in ms
+const TIME_RANGES = {
+    '1h': 3600000,
+    '3h': 10800000,
+    '6h': 21600000,
+    '12h': 43200000,
+    '24h': 86400000,
+    '1w': 604800000
+};
+
+let state = { 
+    indoor: [], 
+    outdoor: null, 
+    charts: {},
+    timeRange: '24h' // Default
+};
 
 const ui = {
     systemStatus: document.getElementById('systemStatus'),
     currentTime: document.getElementById('currentTime'),
     colorToggle: document.getElementById('colorToggle'),
+    filterBtns: document.querySelectorAll('.filter-btn'),
+    fabTrigger: document.getElementById('fabTrigger'),
+    filterBar: document.getElementById('filterBar'),
     
     indoorTemp: document.getElementById('indoorTemp'),
     indoorHum: document.getElementById('indoorHumidity'),
@@ -83,6 +101,13 @@ const ui = {
     comfortScore: document.getElementById('comfortScore'),
     comfortLabel: document.getElementById('comfortLabel'),
     comfortRing: document.getElementById('comfortRing'),
+    
+    // Comfort tooltip
+    comfortContent: document.getElementById('comfortContent'),
+    comfortTooltip: document.getElementById('comfortTooltip'),
+    tooltipTemp: document.getElementById('tooltipTemp'),
+    tooltipHum: document.getElementById('tooltipHum'),
+    tooltipAqi: document.getElementById('tooltipAqi'),
     
     // Derived
     feelsLike: document.getElementById('feelsLike'),
@@ -120,14 +145,7 @@ const ui = {
     tempChart: document.getElementById('tempChart'),
     humChart: document.getElementById('humChart'),
     tempCompareChart: document.getElementById('tempCompareChart'),
-    humCompareChart: document.getElementById('humCompareChart'),
-    
-    // Comfort tooltip
-    comfortContent: document.getElementById('comfortContent'),
-    comfortTooltip: document.getElementById('comfortTooltip'),
-    tooltipTemp: document.getElementById('tooltipTemp'),
-    tooltipHum: document.getElementById('tooltipHum'),
-    tooltipAqi: document.getElementById('tooltipAqi')
+    humCompareChart: document.getElementById('humCompareChart')
 };
 
 // Dynamic color getter based on current accent
@@ -154,6 +172,47 @@ async function init() {
     
     loadAccent();
     ui.colorToggle.addEventListener('click', cycleAccent);
+    
+    // 4. Initial Render
+    updateUI();
+    
+    // 5. FAB Interaction Logic
+    if (ui.fabTrigger && ui.filterBar) {
+        // Toggle Menu
+        ui.fabTrigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            ui.filterBar.classList.toggle('open');
+            // Optional: Rotate icon or change state
+            ui.fabTrigger.style.transform = ui.filterBar.classList.contains('open') ? 'rotate(90deg)' : 'rotate(0deg)';
+        });
+
+        // Close when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!ui.filterBar.contains(e.target) && !ui.fabTrigger.contains(e.target)) {
+                ui.filterBar.classList.remove('open');
+                ui.fabTrigger.style.transform = 'rotate(0deg)';
+            }
+        });
+    }
+
+    // 6. Filter Buttons Interaction
+    ui.filterBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            // Update active state
+            ui.filterBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            // Set state and re-render
+            state.timeRange = btn.dataset.range;
+            updateUI();
+            
+            // Auto-close FAB menu on mobile selection
+            if (window.innerWidth <= 700) {
+                ui.filterBar.classList.remove('open');
+                if (ui.fabTrigger) ui.fabTrigger.style.transform = 'rotate(0deg)';
+            }
+        });
+    });
     
     // Comfort tooltip click handler
     ui.comfortContent.addEventListener('click', (e) => {
@@ -205,9 +264,9 @@ function cycleAccent() {
     localStorage.setItem('accent', ACCENTS[currentAccent]);
     lucide.createIcons();
     
-    // Update charts with new accent color
+    // Update charts with new accent color if data exists
     if (state.indoor.length > 0 && state.outdoor) {
-        renderCharts(state.indoor, state.outdoor);
+        updateUI(); 
     }
     
     // Update comfort ring color
@@ -230,6 +289,16 @@ function updateClock() {
 }
 
 // ========================================
+// DATA LOGIC
+// ========================================
+
+function getFilteredData() {
+    const rangeMs = TIME_RANGES[state.timeRange];
+    const cutoff = Date.now() - rangeMs;
+    return state.indoor.filter(d => new Date(d.timestamp).getTime() > cutoff);
+}
+
+// ========================================
 // REFRESH
 // ========================================
 
@@ -246,20 +315,20 @@ async function refresh() {
         state.indoor = indoor;
         state.outdoor = outdoor;
         
-        // Render functions now handle null data gracefully
+        // Render current status (Hero, Comfort, Derived, Sensor, API) 
+        // These always use the absolute latest reading regardless of filter
         renderHero(indoor, outdoor);
         renderComfort(indoor, outdoor, aqi);
         renderDerived(indoor);
-        renderStats(indoor);
         renderSensor(indoor);
         renderApi();
         
         if (outdoor) {
             renderOutdoor(outdoor, aqi);
-            renderCharts(indoor, outdoor);
-        } else {
-            // Clear outdoor-dependent charts/UI if needed
         }
+        
+        // Render Stats and Charts using Filtered Data
+        updateUI();
         
         ui.systemStatus.textContent = '● LIVE';
         ui.lastUpdated.textContent = new Date().toLocaleTimeString('en-GB');
@@ -267,6 +336,22 @@ async function refresh() {
     } catch (e) {
         console.error(e);
         ui.systemStatus.textContent = '○ OFFLINE';
+    }
+}
+
+function updateUI() {
+    const filtered = getFilteredData();
+    
+    if (filtered.length === 0) {
+        // Handle case with no data in range
+        // Maybe show placeholder? For now charts will just be empty
+    }
+    
+    // Only update stats and charts based on filter
+    renderStats(filtered);
+    
+    if (state.outdoor) {
+        renderCharts(filtered, state.outdoor);
     }
 }
 
@@ -325,7 +410,7 @@ async function fetchOutdoor() {
             hourly: 'temperature_2m,relative_humidity_2m',
             daily: 'uv_index_max,wind_speed_10m_max',
             timezone: 'Asia/Kolkata',
-            past_days: 1,
+            past_days: 7, // Fetch 7 days for 1W view
             forecast_days: 1
         });
         const res = await fetch(`${WEATHER_API}?${params}`);
@@ -476,6 +561,8 @@ function renderDerived(indoor) {
 }
 
 function renderStats(data) {
+    if (!data || data.length === 0) return;
+    
     const latest = data[data.length - 1];
     
     // Helper to find min/max objects
@@ -551,8 +638,19 @@ function renderApi() {
 }
 
 function renderCharts(indoor, outdoor) {
-    const slice = indoor.slice(-24);
-    const labels = slice.map(d => new Date(d.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
+    // Data is already filtered by getFilteredData
+    const data = indoor; 
+    
+    // Format labels based on time range
+    const isWeek = state.timeRange === '1w';
+    const labels = data.map(d => {
+        const date = new Date(d.timestamp);
+        if (isWeek) {
+            return date.toLocaleDateString('en-GB', {day:'numeric', month:'short'}) + ' ' + 
+                   date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        }
+        return date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    });
     
     // Get current accent colors
     const COLORS = getChartColors();
@@ -562,34 +660,35 @@ function renderCharts(indoor, outdoor) {
     state.charts.temp = new Chart(ui.tempChart.getContext('2d'), {
         type: 'line',
         data: { labels, datasets: [{ 
-            data: slice.map(d => d.temp), 
+            data: data.map(d => Math.round(d.temp * 10) / 10), 
             borderColor: COLORS.inside, 
             backgroundColor: COLORS.insideBg, 
             fill: true, 
             tension: 0.4, 
-            pointRadius: 3,
+            pointRadius: data.length > 50 ? 0 : 3, // Hide points for dense data
             pointHoverRadius: 8,
             pointBackgroundColor: COLORS.inside
         }] },
-        options: lineOpts('°C', 15, 35)
+        options: lineOpts('°C', undefined, undefined) // Auto scale
     });
     
     state.charts.hum = new Chart(ui.humChart.getContext('2d'), {
         type: 'line',
         data: { labels, datasets: [{ 
-            data: slice.map(d => d.hum), 
+            data: data.map(d => d.hum), 
             borderColor: COLORS.inside,  // Now uses accent color
             backgroundColor: COLORS.insideBg, 
             fill: true, 
             tension: 0.4, 
-            pointRadius: 3,
+            pointRadius: data.length > 50 ? 0 : 3,
             pointHoverRadius: 8,
             pointBackgroundColor: COLORS.inside
         }] },
-        options: lineOpts('%', 20, 100)
+        options: lineOpts('%', 0, 100) 
     });
     
-    const intervals = get6HrIntervals(indoor, outdoor);
+    // Generate comparison columns based on time range
+    const intervals = getComparisonIntervals(state.indoor, outdoor, state.timeRange);
     
     state.charts.tempCompare = new Chart(ui.tempCompareChart.getContext('2d'), {
         type: 'bar',
@@ -620,22 +719,54 @@ function renderCharts(indoor, outdoor) {
 // UTILITIES
 // ========================================
 
-function get6HrIntervals(indoor, outdoor) {
+function getComparisonIntervals(indoor, outdoor, range) {
     const now = new Date();
     const labels = [], inTemp = [], inHum = [], outTemp = [], outHum = [];
     
-    for (let i = 0; i <= 4; i++) {
-        const hrs = i * 6;
-        const t = new Date(now - hrs * 3600000);
-        labels.push(i === 0 ? 'NOW' : `-${hrs}hr`);
+    let stepCount = 5;
+    let stepMs = 0;
+    
+    // Define steps based on range
+    switch(range) {
+        case '1h': stepMs = 12 * 60000; stepCount = 5; break; // Every 12 mins
+        case '3h': stepMs = 36 * 60000; stepCount = 5; break; // Every 36 mins
+        case '6h': stepMs = 60 * 60000; stepCount = 6; break; // Every hour
+        case '12h': stepMs = 2 * 3600000; stepCount = 6; break; // Every 2 hours
+        case '24h': stepMs = 4 * 3600000; stepCount = 6; break; // Every 4 hours (was 6h)
+        case '1w': stepMs = 24 * 3600000; stepCount = 7; break; // Every day
+    }
+    
+    for (let i = stepCount - 1; i >= 0; i--) {
+        const t = new Date(now - i * stepMs);
         
+        // Format label
+        let label = '';
+        if (range === '1w') {
+             label = t.toLocaleDateString('en-GB', {weekday: 'short'});
+        } else if (range === '24h') {
+             // For 24h, show "-Xh" except for NOW
+             const hrsAgo = i * (stepMs / 3600000);
+             label = i === 0 ? 'NOW' : `-${Math.round(hrsAgo)}h`;
+        } else {
+             label = t.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+        }
+        labels.push(label);
+        
+        // Find data
         const inReading = findClosest(indoor, t);
-        inTemp.push(inReading.temp);
-        inHum.push(inReading.hum);
+        inTemp.push(inReading ? Math.round(inReading.temp * 10) / 10 : 0);
+        inHum.push(inReading ? Math.round(inReading.hum * 10) / 10 : 0);
         
-        const idx = findHourIdx(outdoor.hourly.time, t);
-        outTemp.push(outdoor.hourly.temperature_2m[idx]);
-        outHum.push(outdoor.hourly.relative_humidity_2m[idx]);
+        // Find outdoor
+        if (outdoor && outdoor.hourly) {
+             const idx = findHourIdx(outdoor.hourly.time, t);
+             if (idx >= 0 && idx < outdoor.hourly.temperature_2m.length) {
+                 outTemp.push(outdoor.hourly.temperature_2m[idx]); // API usually returns 1 decimal, but let's be safe
+                 outHum.push(outdoor.hourly.relative_humidity_2m[idx]);
+             } else {
+                 outTemp.push(0); outHum.push(0);
+             }
+        }
     }
     
     return { labels, inTemp, inHum, outTemp, outHum };

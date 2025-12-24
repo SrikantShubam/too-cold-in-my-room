@@ -66,6 +66,19 @@
 
         <main class="bento-grid">
             
+            <!-- ============ ROW 0: FILTERS (GLOBAL) ============ -->
+            <button class="fab-trigger" id="fabTrigger" aria-label="Toggle Filters">
+                <i data-lucide="list-filter"></i>
+            </button>
+            <div class="filter-bar" id="filterBar">
+                <button class="filter-btn" data-range="1h">1H</button>
+                <button class="filter-btn" data-range="3h">3H</button>
+                <button class="filter-btn" data-range="6h">6H</button>
+                <button class="filter-btn" data-range="12h">12H</button>
+                <button class="filter-btn active" data-range="24h">24H</button>
+                <button class="filter-btn" data-range="1w">1W</button>
+            </div>
+            
             <!-- ============ ROW 1: HERO COMPARISON (PROMINENT) ============ -->
             <section class="bento-card hero-card">
                 <div class="card-header">
@@ -147,6 +160,8 @@
                     <div class="outdoor-item"><i data-lucide="cloud"></i><span id="weatherCondition">--</span><small>SKY</small></div>
                 </div>
             </section>
+
+
 
             <!-- ============ ROW 3: 24HR STATS ============ -->
             <section class="bento-card stats-card">
