@@ -91,12 +91,12 @@ function doGet(e) {
   }
 }
 
-// Helper to get last 50 rows efficiently
+// Helper to get last 288 rows (approx 24 hours if 5-min interval, or 4.8 hours if 1-min)
 function getRecentData(sheet) {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
   
-  var startRow = Math.max(2, lastRow - 49); // Last 50 rows
+  var startRow = Math.max(2, lastRow - 287); // Last 288 rows
   var numRows = lastRow - startRow + 1;
   var range = sheet.getRange(startRow, 1, numRows, 4); // Columns A-D
   var values = range.getValues();

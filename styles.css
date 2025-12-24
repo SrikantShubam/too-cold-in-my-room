@@ -515,6 +515,13 @@ body {
     font-weight: 500;
 }
 
+.stat-time {
+    display: block;
+    font-size: 9px;
+    color: var(--c-text-dim);
+    margin-top: 2px;
+}
+
 /* =========================================================================
    STATUS CARDS (SENSOR + API)
    ========================================================================= */

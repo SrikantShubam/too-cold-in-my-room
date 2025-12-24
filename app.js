@@ -155,14 +155,20 @@ async function refresh() {
         state.indoor = indoor;
         state.outdoor = outdoor;
         
+        // Render functions now handle null data gracefully
         renderHero(indoor, outdoor);
         renderComfort(indoor, outdoor, aqi);
         renderDerived(indoor);
         renderStats(indoor);
-        renderOutdoor(outdoor, aqi);
         renderSensor(indoor);
         renderApi();
-        renderCharts(indoor, outdoor);
+        
+        if (outdoor) {
+            renderOutdoor(outdoor, aqi);
+            renderCharts(indoor, outdoor);
+        } else {
+            // Clear outdoor-dependent charts/UI if needed
+        }
         
         ui.systemStatus.textContent = '● LIVE';
         ui.lastUpdated.textContent = new Date().toLocaleTimeString('en-GB');
@@ -215,30 +221,52 @@ async function fetchIndoor() {
 
 async function fetchOutdoor() {
     apiCallCount++;
-    const params = new URLSearchParams({
-        latitude: AppConfig.COORDS.lat,
-        longitude: AppConfig.COORDS.lon,
-        current: 'temperature_2m,relative_humidity_2m,weather_code',
-        hourly: 'temperature_2m,relative_humidity_2m',
-        daily: 'uv_index_max,wind_speed_10m_max',
-        timezone: 'Asia/Kolkata',
-        past_days: 1,
-        forecast_days: 1
-    });
-    const res = await fetch(`${WEATHER_API}?${params}`);
-    return await res.json();
+    try {
+        const params = new URLSearchParams({
+            latitude: AppConfig.COORDS.lat,
+            longitude: AppConfig.COORDS.lon,
+            current: 'temperature_2m,relative_humidity_2m,weather_code',
+            hourly: 'temperature_2m,relative_humidity_2m',
+            daily: 'uv_index_max,wind_speed_10m_max',
+            timezone: 'Asia/Kolkata',
+            past_days: 1,
+            forecast_days: 1
+        });
+        const res = await fetch(`${WEATHER_API}?${params}`);
+        if (!res.ok) throw new Error('Weather API Error');
+        const data = await res.json();
+        ui.apiWeather.textContent = 'OK';
+        ui.apiWeather.className = 'api-badge ok';
+        return data;
+    } catch (e) {
+        logError('Weather API failed', e);
+        ui.apiWeather.textContent = 'ERR';
+        ui.apiWeather.className = 'api-badge error';
+        return null;
+    }
 }
 
 async function fetchAQI() {
     apiCallCount++;
-    const params = new URLSearchParams({
-        latitude: AppConfig.COORDS.lat,
-        longitude: AppConfig.COORDS.lon,
-        current: 'us_aqi',
-        timezone: 'Asia/Kolkata'
-    });
-    const res = await fetch(`${AQI_API}?${params}`);
-    return await res.json();
+    try {
+        const params = new URLSearchParams({
+            latitude: AppConfig.COORDS.lat,
+            longitude: AppConfig.COORDS.lon,
+            current: 'us_aqi',
+            timezone: 'Asia/Kolkata'
+        });
+        const res = await fetch(`${AQI_API}?${params}`);
+        if (!res.ok) throw new Error('AQI API Error');
+        const data = await res.json();
+        ui.apiAqi.textContent = 'OK';
+        ui.apiAqi.className = 'api-badge ok';
+        return data;
+    } catch (e) {
+        logError('AQI API failed', e);
+        ui.apiAqi.textContent = 'ERR';
+        ui.apiAqi.className = 'api-badge error';
+        return null; // Return null on failure
+    }
 }
 
 // ========================================
@@ -247,22 +275,30 @@ async function fetchAQI() {
 
 function renderHero(indoor, outdoor) {
     const latest = indoor[indoor.length - 1];
-    const outT = outdoor.current.temperature_2m;
-    const outH = outdoor.current.relative_humidity_2m;
-    
     ui.indoorTemp.textContent = latest.temp.toFixed(1);
     ui.indoorHum.textContent = latest.hum.toFixed(1);
-    ui.outdoorTemp.textContent = outT.toFixed(1);
-    ui.outdoorHum.textContent = Math.round(outH);
-    
-    const tempD = latest.temp - outT;
-    const humD = latest.hum - outH;
-    
-    ui.tempDiff.textContent = (tempD >= 0 ? '+' : '') + tempD.toFixed(1) + '°C';
-    ui.humDiff.textContent = (humD >= 0 ? '+' : '') + Math.round(humD) + '%';
-    
-    // Animated weather icon
-    updateWeatherIcon(outdoor.current.weather_code);
+
+    if (outdoor) {
+        const outT = outdoor.current.temperature_2m;
+        const outH = outdoor.current.relative_humidity_2m;
+        
+        ui.outdoorTemp.textContent = outT.toFixed(1);
+        ui.outdoorHum.textContent = Math.round(outH);
+        
+        const tempD = latest.temp - outT;
+        const humD = latest.hum - outH;
+        
+        ui.tempDiff.textContent = (tempD >= 0 ? '+' : '') + tempD.toFixed(1) + '°C';
+        ui.humDiff.textContent = (humD >= 0 ? '+' : '') + Math.round(humD) + '%';
+        
+        // Animated weather icon
+        updateWeatherIcon(outdoor.current.weather_code);
+    } else {
+        ui.outdoorTemp.textContent = '--';
+        ui.outdoorHum.textContent = '--';
+        ui.tempDiff.textContent = '--';
+        ui.humDiff.textContent = '--';
+    }
 }
 
 function updateWeatherIcon(code) {
@@ -283,7 +319,12 @@ function renderComfort(indoor, outdoor, aqi) {
     // Calculate comfort score (0-100)
     const tempScore = Math.max(0, 100 - Math.abs(latest.temp - 22) * 10);
     const humScore = Math.max(0, 100 - Math.abs(latest.hum - 50) * 2);
-    const aqiScore = Math.max(0, 100 - aqiVal * 0.5);
+    
+    // AQI is optional
+    let aqiScore = 100;
+    if (aqi && aqi.current) {
+        aqiScore = Math.max(0, 100 - aqi.current.us_aqi * 0.5);
+    }
     
     const score = Math.round((tempScore * 0.4 + humScore * 0.3 + aqiScore * 0.3));
     
@@ -334,18 +375,34 @@ function renderDerived(indoor) {
 
 function renderStats(data) {
     const latest = data[data.length - 1];
-    const temps = data.map(d => d.temp);
-    const hums = data.map(d => d.hum);
     
+    // Helper to find min/max objects
+    const findMin = (key) => data.reduce((min, p) => p[key] < min[key] ? p : min, data[0]);
+    const findMax = (key) => data.reduce((max, p) => p[key] > max[key] ? p : max, data[0]);
+    
+    const minT = findMin('temp');
+    const maxT = findMax('temp');
+    const minH = findMin('hum');
+    const maxH = findMax('hum');
+    
+    // Calculage Avg
+    const avgT = data.reduce((a, b) => a + b.temp, 0) / data.length;
+    const avgH = data.reduce((a, b) => a + b.hum, 0) / data.length;
+    
+    // Time formatter
+    const fmtTime = (ts) => new Date(ts).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    
+    // Render Temp
     ui.latestTemp.textContent = latest.temp.toFixed(1) + '°C';
-    ui.minTemp.textContent = Math.min(...temps).toFixed(1) + '°C';
-    ui.maxTemp.textContent = Math.max(...temps).toFixed(1) + '°C';
-    ui.avgTemp.textContent = (temps.reduce((a,b)=>a+b,0)/temps.length).toFixed(1) + '°C';
+    ui.minTemp.innerHTML = `${minT.temp.toFixed(1)}°C <span class="stat-time">${fmtTime(minT.timestamp)}</span>`;
+    ui.maxTemp.innerHTML = `${maxT.temp.toFixed(1)}°C <span class="stat-time">${fmtTime(maxT.timestamp)}</span>`;
+    ui.avgTemp.innerHTML = `${avgT.toFixed(1)}°C <span class="stat-time">24HR</span>`;
     
+    // Render Hum
     ui.latestHum.textContent = latest.hum.toFixed(1) + '%';
-    ui.minHum.textContent = Math.min(...hums).toFixed(1) + '%';
-    ui.maxHum.textContent = Math.max(...hums).toFixed(1) + '%';
-    ui.avgHum.textContent = (hums.reduce((a,b)=>a+b,0)/hums.length).toFixed(1) + '%';
+    ui.minHum.innerHTML = `${minH.hum.toFixed(1)}% <span class="stat-time">${fmtTime(minH.timestamp)}</span>`;
+    ui.maxHum.innerHTML = `${maxH.hum.toFixed(1)}% <span class="stat-time">${fmtTime(maxH.timestamp)}</span>`;
+    ui.avgHum.innerHTML = `${avgH.toFixed(1)}% <span class="stat-time">24HR</span>`;
 }
 
 function renderOutdoor(weather, aqi) {
