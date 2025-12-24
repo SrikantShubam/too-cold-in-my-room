@@ -1,192 +1,118 @@
 /**
- * Google Apps Script Web App for Room Weather Data
+ * Google Apps Script Web App for Room Weather Data (TOO COLD)
  * 
  * SETUP INSTRUCTIONS:
- * 1. Open your Google Sheet with ESP32 sensor data
- * 2. Go to Extensions → Apps Script
- * 3. Replace the existing code with this file
- * 4. Save the project
- * 5. Click Deploy → New deployment
- * 6. Select type: Web app
- * 7. Configure:
+ * 1. Open your Google Sheet
+ * 2. Extensions > Apps Script
+ * 3. Paste this entire file
+ * 4. Deploy > New Deployment > Web App
  *    - Execute as: Me
  *    - Who has access: Anyone
- * 8. Click Deploy
- * 9. Copy the deployment URL
- * 10. Paste the URL into app.js CONFIG.GOOGLE_SHEETS_API_URL
+ * 5. Copy URL to your ESP32 code and config.js
  */
 
 // ========================================
 // CONFIGURATION
 // ========================================
-const API_CONFIG = {
-  // Rate limiting: Max requests per minute per IP
-  RATE_LIMIT: 60,
-  
-  // CORS: Allowed origins (use '*' for development, specific domain for production)
-  // For production, replace with your domain: 'https://yourdomain.com'
-  ALLOWED_ORIGINS: '*',
-  
-  // Maximum rows to return (prevent abuse)
-  MAX_ROWS: 1000,
-  
-  // Cache duration in seconds (reduce API calls)
-  CACHE_DURATION: 30,
-};
+const SECRET_KEY = "l,8MD_<e£C/jIoZ)U2EeYQ8Z@:VL}8I}&Q#fA3NBi>N0bf0];f"; // Must match ESP32
+const MAX_ROWS = 1000;         // Keep last 1000 readings
+const RATE_LIMIT_MIN = 60;     // Max 60 requests/min per IP
 
 // ========================================
-// RATE LIMITING
+// POST HANDLER (ESP32 WRITES DATA)
 // ========================================
-const rateLimitCache = CacheService.getScriptCache();
+function doPost(e) {
+  var lock = LockService.getScriptLock();
+  lock.tryLock(10000); // Wait up to 10s
 
-function checkRateLimit(identifier) {
-  const cacheKey = 'ratelimit_' + identifier;
-  const cached = rateLimitCache.get(cacheKey);
-  
-  if (cached) {
-    const count = parseInt(cached);
-    if (count >= API_CONFIG.RATE_LIMIT) {
-      return false; // Rate limit exceeded
+  try {
+    var rawData = e.postData.contents;
+    var data = JSON.parse(rawData);
+    
+    // 1. SECURITY CHECK
+    if (data.key !== SECRET_KEY) {
+      return ContentService.createTextOutput("Unauthorized").setMimeType(ContentService.MimeType.TEXT);
     }
-    rateLimitCache.put(cacheKey, (count + 1).toString(), 60); // Increment for 1 minute
-  } else {
-    rateLimitCache.put(cacheKey, '1', 60); // First request
+    
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    
+    // 2. AUTO-SETUP HEADERS
+    if (sheet.getLastRow() === 0) {
+      var headers = ["Timestamp", "Temperature (°C)", "Humidity (%)", "Status", "Raw Data"];
+      sheet.appendRow(headers);
+      sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
+      sheet.setFrozenRows(1);
+    }
+
+    // 3. ADD ROW
+    sheet.appendRow([
+      new Date(),
+      data.temp,
+      data.hum,
+      data.status,
+      rawData
+    ]);
+    
+    // 4. CLEANUP OLD DATA (Optional, keeps sheet fast)
+    var totalRows = sheet.getLastRow();
+    if (totalRows > MAX_ROWS + 100) {
+      sheet.deleteRows(2, totalRows - MAX_ROWS);
+    }
+    
+    return ContentService.createTextOutput("Success").setMimeType(ContentService.MimeType.TEXT);
+
+  } catch (err) {
+    return ContentService.createTextOutput("Error: " + err.message);
+  } finally {
+    lock.releaseLock();
   }
-  
-  return true;
 }
 
 // ========================================
-// MAIN GET HANDLER
+// GET HANDLER (DASHBOARD READS DATA)
 // ========================================
 function doGet(e) {
+  // Rate Limiting (Basic)
+  var cache = CacheService.getScriptCache();
+  var ip = (e.parameter && e.parameter.userip) ? e.parameter.userip : "anon";
+  var count = cache.get(ip);
+  if (count && parseInt(count) > RATE_LIMIT_MIN) {
+     return jsonResponse({error: "Rate limit exceeded"}, 429);
+  }
+  cache.put(ip, count ? parseInt(count) + 1 : 1, 60);
+
   try {
-    // Get client IP for rate limiting (approximate)
-    const identifier = e.parameter.userip || 'anonymous';
-    
-    // Check rate limit
-    if (!checkRateLimit(identifier)) {
-      return createJsonResponse({
-        error: 'Rate limit exceeded. Please try again later.'
-      }, 429);
-    }
-    
-    // Try to get from cache first
-    const cache = CacheService.getScriptCache();
-    const cachedData = cache.get('sensor_data');
-    
-    if (cachedData) {
-      Logger.log('Returning cached data');
-      return createJsonResponse(JSON.parse(cachedData), 200);
-    }
-    
-    // Fetch fresh data
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-    const data = getSensorData(sheet);
-    
-    // Cache the data
-    cache.put('sensor_data', JSON.stringify(data), API_CONFIG.CACHE_DURATION);
-    
-    return createJsonResponse(data, 200);
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    var data = getRecentData(sheet);
+    return jsonResponse(data);
     
   } catch (error) {
-    Logger.log('Error in doGet: ' + error.toString());
-    return createJsonResponse({
-      error: 'Internal server error',
-      message: error.toString()
-    }, 500);
+    return jsonResponse({error: error.toString()}, 500);
   }
 }
 
-// ========================================
-// DATA PROCESSING
-// ========================================
-function getSensorData(sheet) {
-  // Get all data from the sheet
-  const lastRow = sheet.getLastRow();
+// Helper to get last 50 rows efficiently
+function getRecentData(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
   
-  if (lastRow <= 1) {
-    // Only headers exist or sheet is empty
-    return [];
-  }
+  var startRow = Math.max(2, lastRow - 49); // Last 50 rows
+  var numRows = lastRow - startRow + 1;
+  var range = sheet.getRange(startRow, 1, numRows, 4); // Columns A-D
+  var values = range.getValues();
   
-  // Limit rows to prevent abuse
-  const startRow = Math.max(2, lastRow - API_CONFIG.MAX_ROWS + 1);
-  const numRows = lastRow - startRow + 1;
-  
-  // Get data range (skip header row)
-  const range = sheet.getRange(startRow, 1, numRows, 5); // 5 columns: Timestamp, Temp, Humidity, Status, Raw
-  const values = range.getValues();
-  
-  // Process data
-  const processedData = values
-    .filter(row => row[0] && row[1] && row[2]) // Filter out empty rows
-    .map(row => ({
-      timestamp: formatTimestamp(row[0]),
-      temp: parseFloat(row[1]) || 0,
-      hum: parseFloat(row[2]) || 0,
-      status: row[3] || 'Unknown'
-    }));
-  
-  return processedData;
+  return values.map(function(row) {
+    return {
+      timestamp: row[0],
+      temp: row[1],
+      hum: row[2],
+      status: row[3]
+    };
+  });
 }
 
-/**
- * Format timestamp to ISO 8601 string
- */
-function formatTimestamp(timestamp) {
-  if (timestamp instanceof Date) {
-    return timestamp.toISOString();
-  }
-  
-  // Try to parse as date
-  const date = new Date(timestamp);
-  if (!isNaN(date.getTime())) {
-    return date.toISOString();
-  }
-  
-  // Return as-is if can't parse
-  return timestamp.toString();
-}
-
-// ========================================
-// RESPONSE HELPERS
-// ========================================
-function createJsonResponse(data, statusCode = 200) {
-  const output = ContentService.createTextOutput(JSON.stringify(data));
-  output.setMimeType(ContentService.MimeType.JSON);
-  
-  // Add CORS headers
-  const headers = {
-    'Access-Control-Allow-Origin': API_CONFIG.ALLOWED_ORIGINS,
-    'Access-Control-Allow-Methods': 'GET',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Content-Type': 'application/json',
-  };
-  
-  // Note: Apps Script doesn't support custom status codes directly
-  // The statusCode parameter is for documentation purposes
-  
-  return output;
-}
-
-// ========================================
-// TESTING FUNCTION
-// ========================================
-/**
- * Test function to verify the API works
- * Run this from the Apps Script editor to test
- */
-function testApi() {
-  const result = doGet({ parameter: {} });
-  const content = result.getContent();
-  Logger.log(content);
-  
-  const data = JSON.parse(content);
-  Logger.log('Total records: ' + data.length);
-  
-  if (data.length > 0) {
-    Logger.log('Latest reading:');
-    Logger.log(data[data.length - 1]);
-  }
+// Helper for JSON/CORS
+function jsonResponse(data, status) {
+  return ContentService.createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
 }

@@ -27,8 +27,8 @@ if (typeof window.CONFIG === 'undefined') {
     log('API URL:', window.CONFIG.GOOGLE_SHEETS_API_URL.substring(0, 50) + '...');
 }
 
-// Use window.CONFIG for all references
-const CONFIG = window.CONFIG;
+// Use local constant to avoid collision with global CONFIG
+const AppConfig = window.CONFIG;
 
 // API URLs (public, no need to hide)
 const WEATHER_API = 'https://api.open-meteo.com/v1/forecast';
@@ -118,7 +118,7 @@ async function init() {
     setInterval(updateClock, 1000);
     
     await refresh();
-    setInterval(refresh, CONFIG.REFRESH_INTERVAL);
+    setInterval(refresh, AppConfig.REFRESH_INTERVAL);
 }
 
 function loadAccent() {
@@ -182,8 +182,8 @@ async function fetchIndoor() {
     log('Fetching indoor data...');
     
     // Check if using mock data
-    if (CONFIG.GOOGLE_SHEETS_API_URL === 'MOCK_DATA' || 
-        CONFIG.GOOGLE_SHEETS_API_URL.includes('YOUR_')) {
+    if (AppConfig.GOOGLE_SHEETS_API_URL === 'MOCK_DATA' || 
+        AppConfig.GOOGLE_SHEETS_API_URL.includes('YOUR_')) {
         log('Using DEMO mode (no API URL configured)');
         ui.apiSheets.textContent = 'DEMO';
         ui.apiSheets.className = 'api-badge';
@@ -191,8 +191,8 @@ async function fetchIndoor() {
     }
     
     try {
-        log('Fetching from:', CONFIG.GOOGLE_SHEETS_API_URL);
-        const res = await fetch(CONFIG.GOOGLE_SHEETS_API_URL);
+        log('Fetching from:', AppConfig.GOOGLE_SHEETS_API_URL);
+        const res = await fetch(AppConfig.GOOGLE_SHEETS_API_URL);
         log('Response status:', res.status);
         
         if (!res.ok) {
@@ -216,8 +216,8 @@ async function fetchIndoor() {
 async function fetchOutdoor() {
     apiCallCount++;
     const params = new URLSearchParams({
-        latitude: CONFIG.COORDS.lat,
-        longitude: CONFIG.COORDS.lon,
+        latitude: AppConfig.COORDS.lat,
+        longitude: AppConfig.COORDS.lon,
         current: 'temperature_2m,relative_humidity_2m,weather_code',
         hourly: 'temperature_2m,relative_humidity_2m',
         daily: 'uv_index_max,wind_speed_10m_max',
@@ -232,8 +232,8 @@ async function fetchOutdoor() {
 async function fetchAQI() {
     apiCallCount++;
     const params = new URLSearchParams({
-        latitude: CONFIG.COORDS.lat,
-        longitude: CONFIG.COORDS.lon,
+        latitude: AppConfig.COORDS.lat,
+        longitude: AppConfig.COORDS.lon,
         current: 'us_aqi',
         timezone: 'Asia/Kolkata'
     });
@@ -366,8 +366,8 @@ function renderSensor(data) {
     ui.lastReading.textContent = `${dateStr}, ${timeStr}`;
     
     // Check connection status
-    const isMockData = CONFIG.GOOGLE_SHEETS_API_URL === 'MOCK_DATA' || 
-                       CONFIG.GOOGLE_SHEETS_API_URL.includes('YOUR_');
+    const isMockData = AppConfig.GOOGLE_SHEETS_API_URL === 'MOCK_DATA' || 
+                       AppConfig.GOOGLE_SHEETS_API_URL.includes('YOUR_');
     
     if (isMockData || diffMin < 5) {
         ui.sensorConnection.textContent = isMockData ? 'DEMO' : 'ONLINE';
