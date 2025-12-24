@@ -2,13 +2,19 @@
 // TOO COLD - ROOM CLIMATE MONITOR
 // ========================================
 
-const CONFIG = {
-    GOOGLE_SHEETS_API_URL: 'https://script.google.com/macros/s/AKfycbzJJNtGJE_k3yf0BPS-YvZdPdaxFf59Uy_iAwVVJm_1RyaqxJ_l_HxpRO2v_jnGvlfN5w/exec',
-    WEATHER_API: 'https://api.open-meteo.com/v1/forecast',
-    AQI_API: 'https://air-quality-api.open-meteo.com/v1/air-quality',
-    COORDS: { lat: 25.5941, lon: 85.1376 },
-    REFRESH_INTERVAL: 60000,
-};
+// Check if CONFIG is loaded from config.js, otherwise use defaults
+if (typeof CONFIG === 'undefined') {
+    console.warn('[TOO COLD] config.js not found, using mock data');
+    var CONFIG = {
+        GOOGLE_SHEETS_API_URL: 'MOCK_DATA',
+        COORDS: { lat: 25.5941, lon: 85.1376 },
+        REFRESH_INTERVAL: 60000,
+    };
+}
+
+// API URLs (public, no need to hide)
+const WEATHER_API = 'https://api.open-meteo.com/v1/forecast';
+const AQI_API = 'https://air-quality-api.open-meteo.com/v1/air-quality';
 
 // Color themes
 const ACCENTS = ['blue', 'purple', 'green', 'orange', 'pink'];
@@ -155,19 +161,23 @@ async function refresh() {
 
 async function fetchIndoor() {
     apiCallCount++;
-    if (CONFIG.GOOGLE_SHEETS_API_URL.includes('YOUR_')) {
-        ui.apiSheets.textContent = 'MOCK';
-        ui.apiSheets.className = 'api-status';
+    
+    // Check if using mock data
+    if (CONFIG.GOOGLE_SHEETS_API_URL === 'MOCK_DATA' || 
+        CONFIG.GOOGLE_SHEETS_API_URL.includes('YOUR_')) {
+        ui.apiSheets.textContent = 'DEMO';
+        ui.apiSheets.className = 'api-badge';
         return mockIndoor();
     }
+    
     try {
         const res = await fetch(CONFIG.GOOGLE_SHEETS_API_URL);
         ui.apiSheets.textContent = 'OK';
-        ui.apiSheets.className = 'api-status ok';
+        ui.apiSheets.className = 'api-badge ok';
         return await res.json();
     } catch {
         ui.apiSheets.textContent = 'ERR';
-        ui.apiSheets.className = 'api-status error';
+        ui.apiSheets.className = 'api-badge error';
         return mockIndoor();
     }
 }
@@ -184,7 +194,7 @@ async function fetchOutdoor() {
         past_days: 1,
         forecast_days: 1
     });
-    const res = await fetch(`${CONFIG.WEATHER_API}?${params}`);
+    const res = await fetch(`${WEATHER_API}?${params}`);
     return await res.json();
 }
 
@@ -196,7 +206,7 @@ async function fetchAQI() {
         current: 'us_aqi',
         timezone: 'Asia/Kolkata'
     });
-    const res = await fetch(`${CONFIG.AQI_API}?${params}`);
+    const res = await fetch(`${AQI_API}?${params}`);
     return await res.json();
 }
 
@@ -240,7 +250,6 @@ function renderComfort(indoor, outdoor, aqi) {
     const aqiVal = aqi.current.us_aqi;
     
     // Calculate comfort score (0-100)
-    // Optimal: 20-24°C temp, 40-60% humidity, AQI < 50
     const tempScore = Math.max(0, 100 - Math.abs(latest.temp - 22) * 10);
     const humScore = Math.max(0, 100 - Math.abs(latest.hum - 50) * 2);
     const aqiScore = Math.max(0, 100 - aqiVal * 0.5);
@@ -249,11 +258,9 @@ function renderComfort(indoor, outdoor, aqi) {
     
     ui.comfortScore.textContent = score;
     
-    // Update ring
     const offset = 264 - (264 * score / 100);
     ui.comfortRing.style.strokeDashoffset = offset;
     
-    // Color based on score
     if (score >= 70) {
         ui.comfortRing.style.stroke = '#00FF88';
         ui.comfortLabel.textContent = 'EXCELLENT';
@@ -274,13 +281,13 @@ function renderDerived(indoor) {
     const T = latest.temp;
     const H = latest.hum;
     
-    // Dew Point (Magnus formula approximation)
+    // Dew Point (Magnus formula)
     const a = 17.27, b = 237.7;
     const alpha = (a * T) / (b + T) + Math.log(H / 100);
     const dewPoint = (b * alpha) / (a - alpha);
     
-    // Heat Index (simplified Rothfusz regression)
-    const Tf = T * 9/5 + 32; // Convert to Fahrenheit
+    // Heat Index (Rothfusz regression)
+    const Tf = T * 9/5 + 32;
     let HI = 0.5 * (Tf + 61 + (Tf - 68) * 1.2 + H * 0.094);
     if (Tf >= 80) {
         HI = -42.379 + 2.04901523*Tf + 10.14333127*H 
@@ -288,7 +295,7 @@ function renderDerived(indoor) {
             - 0.05481717*H*H + 0.00122874*Tf*Tf*H 
             + 0.00085282*Tf*H*H - 0.00000199*Tf*Tf*H*H;
     }
-    const feelsLike = (HI - 32) * 5/9; // Back to Celsius
+    const feelsLike = (HI - 32) * 5/9;
     
     ui.dewPoint.textContent = dewPoint.toFixed(1) + '°C';
     ui.feelsLike.textContent = feelsLike.toFixed(1) + '°C';
@@ -323,17 +330,16 @@ function renderSensor(data) {
     const now = new Date();
     const diffMin = (now - lastTime) / 60000;
     
-    // Show date + time for last reading
     const dateStr = lastTime.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
     const timeStr = lastTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
     ui.lastReading.textContent = `${dateStr}, ${timeStr}`;
     
-    // For mock data, always show as ONLINE since it's demo mode
-    // For real data, check if timestamp is recent
-    const isMockData = CONFIG.GOOGLE_SHEETS_API_URL.includes('YOUR_');
+    // Check connection status
+    const isMockData = CONFIG.GOOGLE_SHEETS_API_URL === 'MOCK_DATA' || 
+                       CONFIG.GOOGLE_SHEETS_API_URL.includes('YOUR_');
     
     if (isMockData || diffMin < 5) {
-        ui.sensorConnection.textContent = 'ONLINE';
+        ui.sensorConnection.textContent = isMockData ? 'DEMO' : 'ONLINE';
         ui.sensorConnection.style.color = '#00FF88';
     } else if (diffMin < 15) {
         ui.sensorConnection.textContent = 'DELAYED';
@@ -343,7 +349,6 @@ function renderSensor(data) {
         ui.sensorConnection.style.color = '#FF4444';
     }
     
-    // Battery would come from ESP32 data if available
     ui.sensorBattery.textContent = latest.battery ? latest.battery + '%' : 'USB';
 }
 
@@ -355,24 +360,20 @@ function renderCharts(indoor, outdoor) {
     const slice = indoor.slice(-24);
     const labels = slice.map(d => new Date(d.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
     
-    // Destroy old
     Object.values(state.charts).forEach(c => c?.destroy());
     
-    // Temp Chart
     state.charts.temp = new Chart(ui.tempChart.getContext('2d'), {
         type: 'line',
         data: { labels, datasets: [{ data: slice.map(d => d.temp), borderColor: COLORS.inside, backgroundColor: COLORS.insideBg, fill: true, tension: 0.4, pointRadius: 0 }] },
         options: lineOpts('°C', 15, 35)
     });
     
-    // Humidity Chart
     state.charts.hum = new Chart(ui.humChart.getContext('2d'), {
         type: 'line',
         data: { labels, datasets: [{ data: slice.map(d => d.hum), borderColor: COLORS.outside, backgroundColor: COLORS.outsideBg, fill: true, tension: 0.4, pointRadius: 0 }] },
         options: lineOpts('%', 20, 100)
     });
     
-    // Comparison charts
     const intervals = get6HrIntervals(indoor, outdoor);
     
     state.charts.tempCompare = new Chart(ui.tempCompareChart.getContext('2d'), {
@@ -465,8 +466,7 @@ function mockIndoor() {
     const arr = [];
     const now = Date.now();
     for (let i = 0; i < 48; i++) {
-        // Generate 48 readings, last one at current time
-        const hoursBack = (47 - i) * 0.5; // 0.5 hours = 30min intervals, last one is 0 hours back
+        const hoursBack = (47 - i) * 0.5;
         arr.push({
             timestamp: new Date(now - hoursBack * 3600000).toISOString(),
             temp: 22 + Math.sin(i / 8) * 3,
