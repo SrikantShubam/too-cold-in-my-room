@@ -2,15 +2,33 @@
 // TOO COLD - ROOM CLIMATE MONITOR
 // ========================================
 
+// Debug mode - set to true to see detailed logs
+const DEBUG = true;
+
+function log(...args) {
+    if (DEBUG) console.log('[TOO COLD]', ...args);
+}
+
+function logError(...args) {
+    console.error('[TOO COLD ERROR]', ...args);
+}
+
 // Check if CONFIG is loaded from config.js, otherwise use defaults
-if (typeof CONFIG === 'undefined') {
-    console.warn('[TOO COLD] config.js not found, using mock data');
-    var CONFIG = {
+// Using window.CONFIG to avoid redeclaration errors
+if (typeof window.CONFIG === 'undefined') {
+    console.warn('[TOO COLD] config.js not found, using DEMO mode');
+    window.CONFIG = {
         GOOGLE_SHEETS_API_URL: 'MOCK_DATA',
         COORDS: { lat: 25.5941, lon: 85.1376 },
         REFRESH_INTERVAL: 60000,
     };
+} else {
+    log('config.js loaded successfully');
+    log('API URL:', window.CONFIG.GOOGLE_SHEETS_API_URL.substring(0, 50) + '...');
 }
+
+// Use window.CONFIG for all references
+const CONFIG = window.CONFIG;
 
 // API URLs (public, no need to hide)
 const WEATHER_API = 'https://api.open-meteo.com/v1/forecast';
@@ -161,21 +179,34 @@ async function refresh() {
 
 async function fetchIndoor() {
     apiCallCount++;
+    log('Fetching indoor data...');
     
     // Check if using mock data
     if (CONFIG.GOOGLE_SHEETS_API_URL === 'MOCK_DATA' || 
         CONFIG.GOOGLE_SHEETS_API_URL.includes('YOUR_')) {
+        log('Using DEMO mode (no API URL configured)');
         ui.apiSheets.textContent = 'DEMO';
         ui.apiSheets.className = 'api-badge';
         return mockIndoor();
     }
     
     try {
+        log('Fetching from:', CONFIG.GOOGLE_SHEETS_API_URL);
         const res = await fetch(CONFIG.GOOGLE_SHEETS_API_URL);
+        log('Response status:', res.status);
+        
+        if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+        }
+        
+        const data = await res.json();
+        log('Indoor data received:', data.length, 'readings');
+        
         ui.apiSheets.textContent = 'OK';
         ui.apiSheets.className = 'api-badge ok';
-        return await res.json();
-    } catch {
+        return data;
+    } catch (err) {
+        logError('Sheets API failed:', err.message);
         ui.apiSheets.textContent = 'ERR';
         ui.apiSheets.className = 'api-badge error';
         return mockIndoor();
