@@ -111,6 +111,11 @@ const COLORS = {
 // ========================================
 
 async function init() {
+    // Set location name from config
+    const locationName = AppConfig.LOCATION_NAME || 'My Room';
+    document.getElementById('locationName').textContent = locationName;
+    document.title = `Too Cold // ${locationName}`;
+    
     loadAccent();
     ui.colorToggle.addEventListener('click', cycleAccent);
     

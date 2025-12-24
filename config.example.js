@@ -15,9 +15,12 @@ const CONFIG = {
     // Replace with your Google Apps Script URL
     GOOGLE_SHEETS_API_URL: 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE',
     
-    // Location coordinates (Patna)
+    // Location coordinates (change to your city)
     COORDS: { lat: 25.5941, lon: 85.1376 },
     
     // Refresh interval in milliseconds
     REFRESH_INTERVAL: 60000,
+    
+    // Location name displayed in header
+    LOCATION_NAME: 'My Room',
 };
