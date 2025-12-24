@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TOO Cold // Patna</title>
+    
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌡️</text></svg>">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="grid-overlay"></div>
+    
+    <div class="app-container">
+        <!-- HEADER -->
+        <header class="header-bar">
+            <div class="header-left">
+                <span class="status-badge" id="systemStatus">● LIVE</span>
+                <span class="title">TOO COLD</span>
+            </div>
+            <div class="header-right">
+                <button class="color-btn" id="colorToggle" title="Change accent color"><i data-lucide="palette"></i></button>
+                <span class="location"><i data-lucide="map-pin"></i> Patna</span>
+                <span class="clock" id="currentTime">--:--:--</span>
+            </div>
+        </header>
+
+        <main class="bento-grid">
+            
+            <!-- ============ ROW 1: HERO COMPARISON (PROMINENT) ============ -->
+            <section class="bento-card hero-card">
+                <div class="card-header">
+                    <i data-lucide="compass"></i>
+                    <span>INDOOR vs OUTDOOR</span>
+                    <span class="live-dot"></span>
+                </div>
+                <div class="hero-content">
+                    <div class="hero-side indoor">
+                        <div class="hero-icon"><i data-lucide="home"></i></div>
+                        <div class="hero-label">INSIDE</div>
+                        <div class="hero-temp"><span id="indoorTemp">--.-</span>°C</div>
+                        <div class="hero-hum"><i data-lucide="droplets"></i> <span id="indoorHumidity">--.-</span>%</div>
+                    </div>
+                    <div class="hero-diff">
+                        <div class="diff-pill" id="tempDiff">+0.0°C</div>
+                        <div class="diff-pill" id="humDiff">+0%</div>
+                    </div>
+                    <div class="hero-side outdoor">
+                        <div class="hero-icon" id="weatherIcon"><i data-lucide="sun"></i></div>
+                        <div class="hero-label">OUTSIDE</div>
+                        <div class="hero-temp"><span id="outdoorTemp">--</span>°C</div>
+                        <div class="hero-hum"><i data-lucide="droplets"></i> <span id="outdoorHumidity">--</span>%</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- COMFORT SCORE (STANDALONE) -->
+            <section class="bento-card comfort-card">
+                <div class="card-header">
+                    <i data-lucide="heart-pulse"></i>
+                    <span>COMFORT</span>
+                </div>
+                <div class="comfort-content">
+                    <div class="score-ring">
+                        <svg viewBox="0 0 100 100">
+                            <circle class="ring-bg" cx="50" cy="50" r="42"/>
+                            <circle class="ring-progress" id="comfortRing" cx="50" cy="50" r="42"/>
+                        </svg>
+                        <span class="score-value" id="comfortScore">--</span>
+                    </div>
+                    <div class="score-label" id="comfortLabel">Calculating...</div>
+                </div>
+            </section>
+
+            <!-- ============ ROW 2: DERIVED METRICS + OUTDOOR ============ -->
+            <section class="bento-card derived-card">
+                <div class="card-header">
+                    <i data-lucide="thermometer-sun"></i>
+                    <span>FEELS LIKE / DEW POINT</span>
+                </div>
+                <div class="derived-grid">
+                    <div class="derived-item">
+                        <span class="derived-label">FEELS LIKE</span>
+                        <span class="derived-value" id="feelsLike">--°C</span>
+                    </div>
+                    <div class="derived-item">
+                        <span class="derived-label">DEW POINT</span>
+                        <span class="derived-value" id="dewPoint">--°C</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="bento-card outdoor-card">
+                <div class="card-header">
+                    <i data-lucide="cloud"></i>
+                    <span>OUTDOOR CONDITIONS</span>
+                </div>
+                <div class="outdoor-grid">
+                    <div class="outdoor-item"><i data-lucide="sun"></i><span id="uvIndex">--</span><small>UV</small></div>
+                    <div class="outdoor-item"><i data-lucide="wind"></i><span id="windSpeed">--</span><small>KM/H</small></div>
+                    <div class="outdoor-item aqi"><i data-lucide="gauge"></i><span id="aqi">--</span><small>AQI</small></div>
+                    <div class="outdoor-item"><i data-lucide="cloud"></i><span id="weatherCondition">--</span><small>SKY</small></div>
+                </div>
+            </section>
+
+            <!-- ============ ROW 3: 24HR STATS ============ -->
+            <section class="bento-card stats-card">
+                <div class="card-header">
+                    <i data-lucide="bar-chart-2"></i>
+                    <span>24HR INDOOR STATISTICS</span>
+                </div>
+                <div class="stats-grid">
+                    <div class="stat"><span class="label">LATEST</span><span id="latestTemp">--.-°C</span></div>
+                    <div class="stat"><span class="label">MIN</span><span id="minTemp">--.-°C</span></div>
+                    <div class="stat"><span class="label">MAX</span><span id="maxTemp">--.-°C</span></div>
+                    <div class="stat"><span class="label">AVG</span><span id="avgTemp">--.-°C</span></div>
+                    <div class="stat"><span class="label">LATEST</span><span id="latestHum">--.-%</span></div>
+                    <div class="stat"><span class="label">MIN</span><span id="minHum">--.-%</span></div>
+                    <div class="stat"><span class="label">MAX</span><span id="maxHum">--.-%</span></div>
+                    <div class="stat"><span class="label">AVG</span><span id="avgHum">--.-%</span></div>
+                </div>
+            </section>
+
+            <!-- ============ ROW 4: SENSOR + API STATUS ============ -->
+            <section class="bento-card sensor-card">
+                <div class="card-header">
+                    <i data-lucide="cpu"></i>
+                    <span>SENSOR STATUS</span>
+                </div>
+                <div class="status-content">
+                    <div class="status-item">
+                        <i data-lucide="wifi"></i>
+                        <span>CONNECTION</span>
+                        <span class="status-value" id="sensorConnection">ONLINE</span>
+                    </div>
+                    <div class="status-item">
+                        <i data-lucide="battery-charging"></i>
+                        <span>BATTERY</span>
+                        <span class="status-value" id="sensorBattery">N/A</span>
+                    </div>
+                    <div class="status-item">
+                        <i data-lucide="calendar-clock"></i>
+                        <span>LAST READING</span>
+                        <span class="status-value" id="lastReading">--</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="bento-card api-card">
+                <div class="card-header">
+                    <i data-lucide="server"></i>
+                    <span>API STATUS</span>
+                </div>
+                <div class="status-content">
+                    <div class="status-item">
+                        <span>Open-Meteo</span>
+                        <span class="api-badge ok" id="apiWeather">OK</span>
+                    </div>
+                    <div class="status-item">
+                        <span>AQI API</span>
+                        <span class="api-badge ok" id="apiAqi">OK</span>
+                    </div>
+                    <div class="status-item">
+                        <span>Sheets API</span>
+                        <span class="api-badge" id="apiSheets">--</span>
+                    </div>
+                    <div class="api-rate">Calls: <span id="apiCalls">0</span>/min</div>
+                </div>
+            </section>
+
+            <!-- ============ CHARTS ============ -->
+            <section class="bento-card chart-card">
+                <div class="card-header"><i data-lucide="thermometer"></i><span>TEMP 24HR</span></div>
+                <div class="chart-wrapper"><canvas id="tempChart"></canvas></div>
+            </section>
+
+            <section class="bento-card chart-card">
+                <div class="card-header"><i data-lucide="droplets"></i><span>HUMIDITY 24HR</span></div>
+                <div class="chart-wrapper"><canvas id="humChart"></canvas></div>
+            </section>
+
+            <section class="bento-card chart-card">
+                <div class="card-header"><i data-lucide="bar-chart-3"></i><span>TEMP: IN vs OUT</span></div>
+                <div class="chart-wrapper"><canvas id="tempCompareChart"></canvas></div>
+            </section>
+
+            <section class="bento-card chart-card">
+                <div class="card-header"><i data-lucide="bar-chart-3"></i><span>HUM: IN vs OUT</span></div>
+                <div class="chart-wrapper"><canvas id="humCompareChart"></canvas></div>
+            </section>
+        </main>
+
+        <!-- FOOTER -->
+        <footer class="footer-bar">
+            <span>SYNC: <span id="lastUpdated">--:--:--</span></span>
+            <span class="credits">
+                Made with ❤️ by <a href="https://github.com/SrikantShubam" target="_blank" rel="noopener">Srikant Shubham</a>
+            </span>
+            <span>25.5941°N, 85.1376°E</span>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+    <script>lucide.createIcons();</script>
+</body>
+</html>

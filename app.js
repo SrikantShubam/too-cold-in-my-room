@@ -1,0 +1,479 @@
+// ========================================
+// TOO COLD - ROOM CLIMATE MONITOR
+// ========================================
+
+const CONFIG = {
+    GOOGLE_SHEETS_API_URL: 'https://script.google.com/macros/s/AKfycbzJJNtGJE_k3yf0BPS-YvZdPdaxFf59Uy_iAwVVJm_1RyaqxJ_l_HxpRO2v_jnGvlfN5w/exec',
+    WEATHER_API: 'https://api.open-meteo.com/v1/forecast',
+    AQI_API: 'https://air-quality-api.open-meteo.com/v1/air-quality',
+    COORDS: { lat: 25.5941, lon: 85.1376 },
+    REFRESH_INTERVAL: 60000,
+};
+
+// Color themes
+const ACCENTS = ['blue', 'purple', 'green', 'orange', 'pink'];
+let currentAccent = 0;
+let apiCallCount = 0;
+
+let state = { indoor: [], outdoor: null, charts: {} };
+
+const ui = {
+    systemStatus: document.getElementById('systemStatus'),
+    currentTime: document.getElementById('currentTime'),
+    colorToggle: document.getElementById('colorToggle'),
+    
+    indoorTemp: document.getElementById('indoorTemp'),
+    indoorHum: document.getElementById('indoorHumidity'),
+    outdoorTemp: document.getElementById('outdoorTemp'),
+    outdoorHum: document.getElementById('outdoorHumidity'),
+    weatherIcon: document.getElementById('weatherIcon'),
+    
+    tempDiff: document.getElementById('tempDiff'),
+    humDiff: document.getElementById('humDiff'),
+    
+    // Comfort
+    comfortScore: document.getElementById('comfortScore'),
+    comfortLabel: document.getElementById('comfortLabel'),
+    comfortRing: document.getElementById('comfortRing'),
+    
+    // Derived
+    feelsLike: document.getElementById('feelsLike'),
+    dewPoint: document.getElementById('dewPoint'),
+    
+    // Stats
+    latestTemp: document.getElementById('latestTemp'),
+    minTemp: document.getElementById('minTemp'),
+    maxTemp: document.getElementById('maxTemp'),
+    avgTemp: document.getElementById('avgTemp'),
+    latestHum: document.getElementById('latestHum'),
+    minHum: document.getElementById('minHum'),
+    maxHum: document.getElementById('maxHum'),
+    avgHum: document.getElementById('avgHum'),
+    
+    // Outdoor
+    uv: document.getElementById('uvIndex'),
+    wind: document.getElementById('windSpeed'),
+    aqi: document.getElementById('aqi'),
+    condition: document.getElementById('weatherCondition'),
+    
+    // Sensor
+    sensorConnection: document.getElementById('sensorConnection'),
+    sensorBattery: document.getElementById('sensorBattery'),
+    lastReading: document.getElementById('lastReading'),
+    
+    // API
+    apiWeather: document.getElementById('apiWeather'),
+    apiAqi: document.getElementById('apiAqi'),
+    apiSheets: document.getElementById('apiSheets'),
+    apiCalls: document.getElementById('apiCalls'),
+    
+    lastUpdated: document.getElementById('lastUpdated'),
+    
+    tempChart: document.getElementById('tempChart'),
+    humChart: document.getElementById('humChart'),
+    tempCompareChart: document.getElementById('tempCompareChart'),
+    humCompareChart: document.getElementById('humCompareChart')
+};
+
+const COLORS = {
+    inside: '#00A3FF',
+    outside: '#00D4AA',
+    insideBg: 'rgba(0, 163, 255, 0.15)',
+    outsideBg: 'rgba(0, 212, 170, 0.15)'
+};
+
+// ========================================
+// INIT
+// ========================================
+
+async function init() {
+    loadAccent();
+    ui.colorToggle.addEventListener('click', cycleAccent);
+    
+    updateClock();
+    setInterval(updateClock, 1000);
+    
+    await refresh();
+    setInterval(refresh, CONFIG.REFRESH_INTERVAL);
+}
+
+function loadAccent() {
+    const saved = localStorage.getItem('accent') || 'blue';
+    currentAccent = ACCENTS.indexOf(saved);
+    document.body.dataset.accent = saved;
+}
+
+function cycleAccent() {
+    currentAccent = (currentAccent + 1) % ACCENTS.length;
+    document.body.dataset.accent = ACCENTS[currentAccent];
+    localStorage.setItem('accent', ACCENTS[currentAccent]);
+    lucide.createIcons();
+}
+
+function updateClock() {
+    ui.currentTime.textContent = new Date().toLocaleTimeString('en-GB');
+}
+
+// ========================================
+// REFRESH
+// ========================================
+
+async function refresh() {
+    apiCallCount = 0;
+    
+    try {
+        const [indoor, outdoor, aqi] = await Promise.all([
+            fetchIndoor(),
+            fetchOutdoor(),
+            fetchAQI()
+        ]);
+        
+        state.indoor = indoor;
+        state.outdoor = outdoor;
+        
+        renderHero(indoor, outdoor);
+        renderComfort(indoor, outdoor, aqi);
+        renderDerived(indoor);
+        renderStats(indoor);
+        renderOutdoor(outdoor, aqi);
+        renderSensor(indoor);
+        renderApi();
+        renderCharts(indoor, outdoor);
+        
+        ui.systemStatus.textContent = '● LIVE';
+        ui.lastUpdated.textContent = new Date().toLocaleTimeString('en-GB');
+        
+    } catch (e) {
+        console.error(e);
+        ui.systemStatus.textContent = '○ OFFLINE';
+    }
+}
+
+// ========================================
+// FETCHERS
+// ========================================
+
+async function fetchIndoor() {
+    apiCallCount++;
+    if (CONFIG.GOOGLE_SHEETS_API_URL.includes('YOUR_')) {
+        ui.apiSheets.textContent = 'MOCK';
+        ui.apiSheets.className = 'api-status';
+        return mockIndoor();
+    }
+    try {
+        const res = await fetch(CONFIG.GOOGLE_SHEETS_API_URL);
+        ui.apiSheets.textContent = 'OK';
+        ui.apiSheets.className = 'api-status ok';
+        return await res.json();
+    } catch {
+        ui.apiSheets.textContent = 'ERR';
+        ui.apiSheets.className = 'api-status error';
+        return mockIndoor();
+    }
+}
+
+async function fetchOutdoor() {
+    apiCallCount++;
+    const params = new URLSearchParams({
+        latitude: CONFIG.COORDS.lat,
+        longitude: CONFIG.COORDS.lon,
+        current: 'temperature_2m,relative_humidity_2m,weather_code',
+        hourly: 'temperature_2m,relative_humidity_2m',
+        daily: 'uv_index_max,wind_speed_10m_max',
+        timezone: 'Asia/Kolkata',
+        past_days: 1,
+        forecast_days: 1
+    });
+    const res = await fetch(`${CONFIG.WEATHER_API}?${params}`);
+    return await res.json();
+}
+
+async function fetchAQI() {
+    apiCallCount++;
+    const params = new URLSearchParams({
+        latitude: CONFIG.COORDS.lat,
+        longitude: CONFIG.COORDS.lon,
+        current: 'us_aqi',
+        timezone: 'Asia/Kolkata'
+    });
+    const res = await fetch(`${CONFIG.AQI_API}?${params}`);
+    return await res.json();
+}
+
+// ========================================
+// RENDERERS
+// ========================================
+
+function renderHero(indoor, outdoor) {
+    const latest = indoor[indoor.length - 1];
+    const outT = outdoor.current.temperature_2m;
+    const outH = outdoor.current.relative_humidity_2m;
+    
+    ui.indoorTemp.textContent = latest.temp.toFixed(1);
+    ui.indoorHum.textContent = latest.hum.toFixed(1);
+    ui.outdoorTemp.textContent = outT.toFixed(1);
+    ui.outdoorHum.textContent = Math.round(outH);
+    
+    const tempD = latest.temp - outT;
+    const humD = latest.hum - outH;
+    
+    ui.tempDiff.textContent = (tempD >= 0 ? '+' : '') + tempD.toFixed(1) + '°C';
+    ui.humDiff.textContent = (humD >= 0 ? '+' : '') + Math.round(humD) + '%';
+    
+    // Animated weather icon
+    updateWeatherIcon(outdoor.current.weather_code);
+}
+
+function updateWeatherIcon(code) {
+    const iconMap = {
+        0: 'sun', 1: 'cloud-sun', 2: 'cloud', 3: 'cloudy',
+        45: 'cloud-fog', 61: 'cloud-rain', 63: 'cloud-rain',
+        80: 'cloud-drizzle', 95: 'cloud-lightning'
+    };
+    const icon = iconMap[code] || 'cloud';
+    ui.weatherIcon.innerHTML = `<i data-lucide="${icon}"></i>`;
+    lucide.createIcons();
+}
+
+function renderComfort(indoor, outdoor, aqi) {
+    const latest = indoor[indoor.length - 1];
+    const aqiVal = aqi.current.us_aqi;
+    
+    // Calculate comfort score (0-100)
+    // Optimal: 20-24°C temp, 40-60% humidity, AQI < 50
+    const tempScore = Math.max(0, 100 - Math.abs(latest.temp - 22) * 10);
+    const humScore = Math.max(0, 100 - Math.abs(latest.hum - 50) * 2);
+    const aqiScore = Math.max(0, 100 - aqiVal * 0.5);
+    
+    const score = Math.round((tempScore * 0.4 + humScore * 0.3 + aqiScore * 0.3));
+    
+    ui.comfortScore.textContent = score;
+    
+    // Update ring
+    const offset = 264 - (264 * score / 100);
+    ui.comfortRing.style.strokeDashoffset = offset;
+    
+    // Color based on score
+    if (score >= 70) {
+        ui.comfortRing.style.stroke = '#00FF88';
+        ui.comfortLabel.textContent = 'EXCELLENT';
+    } else if (score >= 50) {
+        ui.comfortRing.style.stroke = '#00A3FF';
+        ui.comfortLabel.textContent = 'GOOD';
+    } else if (score >= 30) {
+        ui.comfortRing.style.stroke = '#FFB800';
+        ui.comfortLabel.textContent = 'MODERATE';
+    } else {
+        ui.comfortRing.style.stroke = '#FF4444';
+        ui.comfortLabel.textContent = 'POOR';
+    }
+}
+
+function renderDerived(indoor) {
+    const latest = indoor[indoor.length - 1];
+    const T = latest.temp;
+    const H = latest.hum;
+    
+    // Dew Point (Magnus formula approximation)
+    const a = 17.27, b = 237.7;
+    const alpha = (a * T) / (b + T) + Math.log(H / 100);
+    const dewPoint = (b * alpha) / (a - alpha);
+    
+    // Heat Index (simplified Rothfusz regression)
+    const Tf = T * 9/5 + 32; // Convert to Fahrenheit
+    let HI = 0.5 * (Tf + 61 + (Tf - 68) * 1.2 + H * 0.094);
+    if (Tf >= 80) {
+        HI = -42.379 + 2.04901523*Tf + 10.14333127*H 
+            - 0.22475541*Tf*H - 0.00683783*Tf*Tf 
+            - 0.05481717*H*H + 0.00122874*Tf*Tf*H 
+            + 0.00085282*Tf*H*H - 0.00000199*Tf*Tf*H*H;
+    }
+    const feelsLike = (HI - 32) * 5/9; // Back to Celsius
+    
+    ui.dewPoint.textContent = dewPoint.toFixed(1) + '°C';
+    ui.feelsLike.textContent = feelsLike.toFixed(1) + '°C';
+}
+
+function renderStats(data) {
+    const latest = data[data.length - 1];
+    const temps = data.map(d => d.temp);
+    const hums = data.map(d => d.hum);
+    
+    ui.latestTemp.textContent = latest.temp.toFixed(1) + '°C';
+    ui.minTemp.textContent = Math.min(...temps).toFixed(1) + '°C';
+    ui.maxTemp.textContent = Math.max(...temps).toFixed(1) + '°C';
+    ui.avgTemp.textContent = (temps.reduce((a,b)=>a+b,0)/temps.length).toFixed(1) + '°C';
+    
+    ui.latestHum.textContent = latest.hum.toFixed(1) + '%';
+    ui.minHum.textContent = Math.min(...hums).toFixed(1) + '%';
+    ui.maxHum.textContent = Math.max(...hums).toFixed(1) + '%';
+    ui.avgHum.textContent = (hums.reduce((a,b)=>a+b,0)/hums.length).toFixed(1) + '%';
+}
+
+function renderOutdoor(weather, aqi) {
+    ui.uv.textContent = weather.daily.uv_index_max[0].toFixed(1);
+    ui.wind.textContent = Math.round(weather.daily.wind_speed_10m_max[0]);
+    ui.aqi.textContent = aqi.current.us_aqi;
+    ui.condition.textContent = getCondition(weather.current.weather_code);
+}
+
+function renderSensor(data) {
+    const latest = data[data.length - 1];
+    const lastTime = new Date(latest.timestamp);
+    const now = new Date();
+    const diffMin = (now - lastTime) / 60000;
+    
+    // Show date + time for last reading
+    const dateStr = lastTime.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+    const timeStr = lastTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    ui.lastReading.textContent = `${dateStr}, ${timeStr}`;
+    
+    // For mock data, always show as ONLINE since it's demo mode
+    // For real data, check if timestamp is recent
+    const isMockData = CONFIG.GOOGLE_SHEETS_API_URL.includes('YOUR_');
+    
+    if (isMockData || diffMin < 5) {
+        ui.sensorConnection.textContent = 'ONLINE';
+        ui.sensorConnection.style.color = '#00FF88';
+    } else if (diffMin < 15) {
+        ui.sensorConnection.textContent = 'DELAYED';
+        ui.sensorConnection.style.color = '#FFB800';
+    } else {
+        ui.sensorConnection.textContent = 'OFFLINE';
+        ui.sensorConnection.style.color = '#FF4444';
+    }
+    
+    // Battery would come from ESP32 data if available
+    ui.sensorBattery.textContent = latest.battery ? latest.battery + '%' : 'USB';
+}
+
+function renderApi() {
+    ui.apiCalls.textContent = apiCallCount;
+}
+
+function renderCharts(indoor, outdoor) {
+    const slice = indoor.slice(-24);
+    const labels = slice.map(d => new Date(d.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
+    
+    // Destroy old
+    Object.values(state.charts).forEach(c => c?.destroy());
+    
+    // Temp Chart
+    state.charts.temp = new Chart(ui.tempChart.getContext('2d'), {
+        type: 'line',
+        data: { labels, datasets: [{ data: slice.map(d => d.temp), borderColor: COLORS.inside, backgroundColor: COLORS.insideBg, fill: true, tension: 0.4, pointRadius: 0 }] },
+        options: lineOpts('°C', 15, 35)
+    });
+    
+    // Humidity Chart
+    state.charts.hum = new Chart(ui.humChart.getContext('2d'), {
+        type: 'line',
+        data: { labels, datasets: [{ data: slice.map(d => d.hum), borderColor: COLORS.outside, backgroundColor: COLORS.outsideBg, fill: true, tension: 0.4, pointRadius: 0 }] },
+        options: lineOpts('%', 20, 100)
+    });
+    
+    // Comparison charts
+    const intervals = get6HrIntervals(indoor, outdoor);
+    
+    state.charts.tempCompare = new Chart(ui.tempCompareChart.getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: intervals.labels,
+            datasets: [
+                { label: 'Inside', data: intervals.inTemp, backgroundColor: COLORS.inside, borderRadius: 6 },
+                { label: 'Outside', data: intervals.outTemp, backgroundColor: COLORS.outside, borderRadius: 6 }
+            ]
+        },
+        options: barOpts('°C')
+    });
+    
+    state.charts.humCompare = new Chart(ui.humCompareChart.getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: intervals.labels,
+            datasets: [
+                { label: 'Inside', data: intervals.inHum, backgroundColor: COLORS.inside, borderRadius: 6 },
+                { label: 'Outside', data: intervals.outHum, backgroundColor: COLORS.outside, borderRadius: 6 }
+            ]
+        },
+        options: barOpts('%')
+    });
+}
+
+// ========================================
+// UTILITIES
+// ========================================
+
+function get6HrIntervals(indoor, outdoor) {
+    const now = new Date();
+    const labels = [], inTemp = [], inHum = [], outTemp = [], outHum = [];
+    
+    for (let i = 0; i <= 4; i++) {
+        const hrs = i * 6;
+        const t = new Date(now - hrs * 3600000);
+        labels.push(i === 0 ? 'NOW' : `-${hrs}hr`);
+        
+        const inReading = findClosest(indoor, t);
+        inTemp.push(inReading.temp);
+        inHum.push(inReading.hum);
+        
+        const idx = findHourIdx(outdoor.hourly.time, t);
+        outTemp.push(outdoor.hourly.temperature_2m[idx]);
+        outHum.push(outdoor.hourly.relative_humidity_2m[idx]);
+    }
+    
+    return { labels, inTemp, inHum, outTemp, outHum };
+}
+
+function findClosest(data, time) {
+    return data.reduce((a, b) => Math.abs(new Date(b.timestamp) - time) < Math.abs(new Date(a.timestamp) - time) ? b : a);
+}
+
+function findHourIdx(times, target) {
+    let idx = 0, min = Infinity;
+    times.forEach((t, i) => { const diff = Math.abs(new Date(t) - target); if (diff < min) { min = diff; idx = i; } });
+    return idx;
+}
+
+function lineOpts(unit, min, max) {
+    return {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+            x: { grid: { display: false }, ticks: { color: '#444', font: { size: 9 } } },
+            y: { min, max, grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#444', font: { size: 9 }, callback: v => v + unit } }
+        }
+    };
+}
+
+function barOpts(unit) {
+    return {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+            x: { grid: { display: false }, ticks: { color: '#444', font: { size: 10 } } },
+            y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#444', font: { size: 9 }, callback: v => v + unit } }
+        }
+    };
+}
+
+function getCondition(code) {
+    return { 0: 'CLEAR', 1: 'FAIR', 2: 'CLOUDY', 3: 'OVERCAST', 45: 'FOG', 61: 'RAIN', 63: 'RAIN', 95: 'STORM' }[code] || '--';
+}
+
+function mockIndoor() {
+    const arr = [];
+    const now = Date.now();
+    for (let i = 0; i < 48; i++) {
+        // Generate 48 readings, last one at current time
+        const hoursBack = (47 - i) * 0.5; // 0.5 hours = 30min intervals, last one is 0 hours back
+        arr.push({
+            timestamp: new Date(now - hoursBack * 3600000).toISOString(),
+            temp: 22 + Math.sin(i / 8) * 3,
+            hum: 55 + Math.cos(i / 8) * 10
+        });
+    }
+    return arr;
+}
+
+document.addEventListener('DOMContentLoaded', init);

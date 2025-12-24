@@ -1,0 +1,682 @@
+/* =========================================================================
+   TOO COLD - ROOM CLIMATE MONITOR
+   ========================================================================= */
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');
+
+:root {
+    --c-bg: #000;
+    --c-panel: #0d0d0d;
+    --c-border: #1a1a1a;
+    --c-grid: rgba(255, 255, 255, 0.012);
+
+    --c-text: #fff;
+    --c-text-dim: #666;
+    --c-text-label: #888;
+
+    --c-accent: #00A3FF;
+    --c-accent-dim: rgba(0, 163, 255, 0.12);
+    --c-accent-glow: rgba(0, 163, 255, 0.3);
+
+    --c-inside: #00A3FF;
+    --c-outside: #00D4AA;
+    --c-success: #00FF88;
+    --c-warning: #FFB800;
+    --c-error: #FF4444;
+
+    --font: 'JetBrains Mono', monospace;
+    --radius: 16px;
+    --radius-sm: 8px;
+    --gap: 16px;
+}
+
+/* COLOR THEMES */
+[data-accent="blue"] {
+    --c-accent: #00A3FF;
+    --c-accent-dim: rgba(0, 163, 255, 0.12);
+}
+
+[data-accent="purple"] {
+    --c-accent: #8B5CF6;
+    --c-accent-dim: rgba(139, 92, 246, 0.12);
+}
+
+[data-accent="green"] {
+    --c-accent: #00FF88;
+    --c-accent-dim: rgba(0, 255, 136, 0.12);
+}
+
+[data-accent="orange"] {
+    --c-accent: #FF6B35;
+    --c-accent-dim: rgba(255, 107, 53, 0.12);
+}
+
+[data-accent="pink"] {
+    --c-accent: #FF6B9D;
+    --c-accent-dim: rgba(255, 107, 157, 0.12);
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: var(--font);
+    background: var(--c-bg);
+    color: var(--c-text);
+    min-height: 100vh;
+    line-height: 1.4;
+}
+
+.grid-overlay {
+    position: fixed;
+    inset: 0;
+    background-image:
+        linear-gradient(var(--c-grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--c-grid) 1px, transparent 1px);
+    background-size: 50px 50px;
+    pointer-events: none;
+}
+
+.app-container {
+    position: relative;
+    z-index: 1;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* =========================================================================
+   HEADER
+   ========================================================================= */
+.header-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    background: var(--c-panel);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    margin-bottom: 20px;
+}
+
+.header-left,
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.status-badge {
+    font-size: 11px;
+    color: var(--c-success);
+    font-weight: 600;
+}
+
+.title {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+}
+
+.color-btn {
+    background: var(--c-accent-dim);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-sm);
+    padding: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    transition: all 0.2s;
+}
+
+.color-btn svg {
+    width: 16px;
+    height: 16px;
+    stroke: var(--c-accent);
+}
+
+.color-btn:hover {
+    background: var(--c-accent);
+}
+
+.color-btn:hover svg {
+    stroke: #000;
+}
+
+.location {
+    font-size: 11px;
+    color: var(--c-text-dim);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.location svg {
+    width: 14px;
+    height: 14px;
+    stroke: var(--c-accent);
+}
+
+.clock {
+    font-size: 14px;
+    color: var(--c-accent);
+    font-weight: 500;
+}
+
+/* =========================================================================
+   BENTO GRID
+   ========================================================================= */
+.bento-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+}
+
+.bento-card {
+    background: var(--c-panel);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.bento-card:hover {
+    border-color: var(--c-accent);
+    box-shadow: 0 0 40px var(--c-accent-dim);
+}
+
+.card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--c-border);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: var(--c-text-label);
+}
+
+.card-header svg {
+    width: 16px;
+    height: 16px;
+    stroke: var(--c-accent);
+}
+
+.live-dot {
+    width: 8px;
+    height: 8px;
+    background: var(--c-success);
+    border-radius: 50%;
+    margin-left: auto;
+    animation: pulse 1.5s infinite;
+    box-shadow: 0 0 12px var(--c-success);
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.5;
+        transform: scale(1.3);
+    }
+}
+
+/* =========================================================================
+   HERO CARD (3 COLUMNS - PROMINENT)
+   ========================================================================= */
+.hero-card {
+    grid-column: span 3;
+}
+
+.hero-content {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 32px;
+    padding: 40px;
+    align-items: center;
+}
+
+.hero-side {
+    text-align: center;
+    padding: 28px;
+    border-radius: var(--radius);
+    background: rgba(255, 255, 255, 0.02);
+    transition: all 0.3s;
+}
+
+.hero-side.indoor {
+    border: 2px solid var(--c-inside);
+}
+
+.hero-side.outdoor {
+    border: 2px solid var(--c-outside);
+}
+
+.hero-icon {
+    margin-bottom: 16px;
+}
+
+.hero-icon svg {
+    width: 36px;
+    height: 36px;
+}
+
+.hero-side.indoor .hero-icon svg {
+    stroke: var(--c-inside);
+}
+
+.hero-side.outdoor .hero-icon svg {
+    stroke: var(--c-outside);
+    animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-6px);
+    }
+}
+
+.hero-label {
+    font-size: 11px;
+    color: var(--c-text-dim);
+    letter-spacing: 0.12em;
+    margin-bottom: 16px;
+}
+
+.hero-temp {
+    font-size: 56px;
+    font-weight: 300;
+    line-height: 1;
+    margin-bottom: 12px;
+}
+
+.hero-side.indoor .hero-temp {
+    color: var(--c-inside);
+}
+
+.hero-side.outdoor .hero-temp {
+    color: var(--c-outside);
+}
+
+.hero-hum {
+    font-size: 16px;
+    color: var(--c-text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.hero-hum svg {
+    width: 16px;
+    height: 16px;
+}
+
+.hero-diff {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.diff-pill {
+    font-size: 15px;
+    font-weight: 600;
+    padding: 14px 24px;
+    background: var(--c-accent-dim);
+    border-radius: 30px;
+    color: var(--c-accent);
+    text-align: center;
+}
+
+/* =========================================================================
+   COMFORT SCORE (1 COLUMN - CENTERED)
+   ========================================================================= */
+.comfort-card {
+    grid-column: span 1;
+}
+
+.comfort-content {
+    padding: 32px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    min-height: 220px;
+}
+
+.score-ring {
+    position: relative;
+    width: 120px;
+    height: 120px;
+}
+
+.score-ring svg {
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+}
+
+.ring-bg {
+    fill: none;
+    stroke: var(--c-border);
+    stroke-width: 10;
+}
+
+.ring-progress {
+    fill: none;
+    stroke: var(--c-accent);
+    stroke-width: 10;
+    stroke-linecap: round;
+    stroke-dasharray: 264;
+    stroke-dashoffset: 264;
+    transition: stroke-dashoffset 1s ease, stroke 0.3s;
+}
+
+.score-value {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 32px;
+    font-weight: 600;
+}
+
+.score-label {
+    font-size: 12px;
+    color: var(--c-text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+}
+
+/* =========================================================================
+   DERIVED METRICS
+   ========================================================================= */
+.derived-card {
+    grid-column: span 2;
+}
+
+.derived-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--c-border);
+}
+
+.derived-item {
+    background: var(--c-panel);
+    padding: 28px;
+    text-align: center;
+}
+
+.derived-label {
+    display: block;
+    font-size: 10px;
+    color: var(--c-text-dim);
+    letter-spacing: 0.1em;
+    margin-bottom: 12px;
+}
+
+.derived-value {
+    display: block;
+    font-size: 28px;
+    font-weight: 500;
+}
+
+/* =========================================================================
+   OUTDOOR CARD
+   ========================================================================= */
+.outdoor-card {
+    grid-column: span 2;
+}
+
+.outdoor-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--c-border);
+}
+
+.outdoor-item {
+    background: var(--c-panel);
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.outdoor-item svg {
+    width: 20px;
+    height: 20px;
+    stroke: var(--c-text-dim);
+}
+
+.outdoor-item span {
+    font-size: 20px;
+    font-weight: 500;
+}
+
+.outdoor-item small {
+    font-size: 10px;
+    color: var(--c-text-dim);
+}
+
+.outdoor-item.aqi span {
+    color: var(--c-warning);
+}
+
+/* =========================================================================
+   STATS CARD
+   ========================================================================= */
+.stats-card {
+    grid-column: span 4;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 1px;
+    background: var(--c-border);
+}
+
+.stat {
+    background: var(--c-panel);
+    padding: 20px;
+    text-align: center;
+}
+
+.stat .label {
+    display: block;
+    font-size: 9px;
+    color: var(--c-text-dim);
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+}
+
+.stat span:last-child {
+    font-size: 15px;
+    font-weight: 500;
+}
+
+/* =========================================================================
+   STATUS CARDS (SENSOR + API)
+   ========================================================================= */
+.sensor-card,
+.api-card {
+    grid-column: span 2;
+}
+
+.status-content {
+    padding: 20px;
+}
+
+.status-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--c-border);
+    font-size: 12px;
+}
+
+.status-item:last-child {
+    border-bottom: none;
+}
+
+.status-item svg {
+    width: 16px;
+    height: 16px;
+    stroke: var(--c-accent);
+}
+
+.status-value {
+    margin-left: auto;
+    color: var(--c-success);
+    font-weight: 600;
+}
+
+.api-badge {
+    margin-left: auto;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.api-badge.ok {
+    background: rgba(0, 255, 136, 0.1);
+    color: var(--c-success);
+}
+
+.api-badge.error {
+    background: rgba(255, 68, 68, 0.1);
+    color: var(--c-error);
+}
+
+.api-rate {
+    margin-top: 16px;
+    font-size: 11px;
+    color: var(--c-text-dim);
+    text-align: center;
+    padding-top: 12px;
+    border-top: 1px solid var(--c-border);
+}
+
+/* =========================================================================
+   CHART CARDS
+   ========================================================================= */
+.chart-card {
+    grid-column: span 2;
+}
+
+.chart-wrapper {
+    height: 220px;
+    padding: 20px;
+}
+
+/* =========================================================================
+   FOOTER
+   ========================================================================= */
+.footer-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    margin-top: 20px;
+    background: var(--c-panel);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    font-size: 11px;
+    color: var(--c-text-dim);
+}
+
+.credits a {
+    color: var(--c-accent);
+    text-decoration: none;
+    transition: opacity 0.2s;
+}
+
+.credits a:hover {
+    opacity: 0.8;
+}
+
+/* =========================================================================
+   MOBILE RESPONSIVE
+   ========================================================================= */
+@media (max-width: 1100px) {
+    .bento-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .hero-card {
+        grid-column: span 2;
+    }
+
+    .comfort-card {
+        grid-column: span 2;
+    }
+
+    .stats-card {
+        grid-column: span 2;
+    }
+
+    .stats-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+@media (max-width: 700px) {
+    .bento-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .bento-card {
+        grid-column: span 1 !important;
+    }
+
+    .hero-content {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+
+    .hero-diff {
+        flex-direction: row;
+        justify-content: center;
+    }
+
+    .hero-temp {
+        font-size: 40px;
+    }
+
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .outdoor-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .footer-bar {
+        flex-direction: column;
+        gap: 10px;
+        text-align: center;
+    }
+}
