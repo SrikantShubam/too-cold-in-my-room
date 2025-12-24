@@ -197,8 +197,10 @@ async function fetchIndoor() {
     }
     
     try {
-        log('Fetching from:', AppConfig.GOOGLE_SHEETS_API_URL);
-        const res = await fetch(AppConfig.GOOGLE_SHEETS_API_URL);
+        // Add cache-busting parameter to prevent stale data
+        const url = AppConfig.GOOGLE_SHEETS_API_URL + '?_=' + Date.now();
+        log('Fetching from:', url);
+        const res = await fetch(url);
         log('Response status:', res.status);
         
         if (!res.ok) {
