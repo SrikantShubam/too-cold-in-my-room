@@ -208,9 +208,12 @@ async function fetchIndoor() {
         const data = await res.json();
         log('Indoor data received:', data.length, 'readings');
         
+        // API returns newest-first, but we need oldest-first (latest at end)
+        const sortedData = data.reverse();
+        
         ui.apiSheets.textContent = 'OK';
         ui.apiSheets.className = 'api-badge ok';
-        return data;
+        return sortedData;
     } catch (err) {
         logError('Sheets API failed:', err.message);
         ui.apiSheets.textContent = 'ERR';
@@ -397,16 +400,16 @@ function renderStats(data) {
     };
     
     // Render Temp
-    ui.latestTemp.textContent = latest.temp.toFixed(1) + '°C';
+    ui.latestTemp.innerHTML = `${latest.temp.toFixed(1)}°C <span class="stat-time">${fmtTime(latest.timestamp)}</span>`;
     ui.minTemp.innerHTML = `${minT.temp.toFixed(1)}°C <span class="stat-time">${fmtTime(minT.timestamp)}</span>`;
     ui.maxTemp.innerHTML = `${maxT.temp.toFixed(1)}°C <span class="stat-time">${fmtTime(maxT.timestamp)}</span>`;
-    ui.avgTemp.innerHTML = `${avgT.toFixed(1)}°C <span class="stat-time">24HR</span>`;
+    ui.avgTemp.innerHTML = `${avgT.toFixed(1)}°C <span class="stat-time">${data.length} readings</span>`;
     
     // Render Hum
-    ui.latestHum.textContent = latest.hum.toFixed(1) + '%';
+    ui.latestHum.innerHTML = `${latest.hum.toFixed(1)}% <span class="stat-time">${fmtTime(latest.timestamp)}</span>`;
     ui.minHum.innerHTML = `${minH.hum.toFixed(1)}% <span class="stat-time">${fmtTime(minH.timestamp)}</span>`;
     ui.maxHum.innerHTML = `${maxH.hum.toFixed(1)}% <span class="stat-time">${fmtTime(maxH.timestamp)}</span>`;
-    ui.avgHum.innerHTML = `${avgH.toFixed(1)}% <span class="stat-time">24HR</span>`;
+    ui.avgHum.innerHTML = `${avgH.toFixed(1)}% <span class="stat-time">${data.length} readings</span>`;
 }
 
 function renderOutdoor(weather, aqi) {
