@@ -389,8 +389,12 @@ function renderStats(data) {
     const avgT = data.reduce((a, b) => a + b.temp, 0) / data.length;
     const avgH = data.reduce((a, b) => a + b.hum, 0) / data.length;
     
-    // Time formatter
-    const fmtTime = (ts) => new Date(ts).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    // Time formatter (Date + Time)
+    const fmtTime = (ts) => {
+        const d = new Date(ts);
+        return d.toLocaleDateString('en-GB', {day:'numeric', month:'short'}) + ' ' + 
+               d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    };
     
     // Render Temp
     ui.latestTemp.textContent = latest.temp.toFixed(1) + '°C';
