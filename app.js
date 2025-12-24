@@ -39,6 +39,30 @@ const ACCENTS = ['blue', 'purple', 'green', 'orange', 'pink'];
 let currentAccent = 0;
 let apiCallCount = 0;
 
+// Accent color definitions for charts (primary = inside, secondary = outside for contrast)
+const ACCENT_COLORS = {
+    blue: { 
+        primary: '#00A3FF', primaryBg: 'rgba(0, 163, 255, 0.15)',
+        secondary: '#FF6B9D', secondaryBg: 'rgba(255, 107, 157, 0.15)'
+    },
+    purple: { 
+        primary: '#8B5CF6', primaryBg: 'rgba(139, 92, 246, 0.15)',
+        secondary: '#00D4AA', secondaryBg: 'rgba(0, 212, 170, 0.15)'
+    },
+    green: { 
+        primary: '#00FF88', primaryBg: 'rgba(0, 255, 136, 0.15)',
+        secondary: '#FF6B35', secondaryBg: 'rgba(255, 107, 53, 0.15)'
+    },
+    orange: { 
+        primary: '#FF6B35', primaryBg: 'rgba(255, 107, 53, 0.15)',
+        secondary: '#00A3FF', secondaryBg: 'rgba(0, 163, 255, 0.15)'
+    },
+    pink: { 
+        primary: '#FF6B9D', primaryBg: 'rgba(255, 107, 157, 0.15)',
+        secondary: '#00FF88', secondaryBg: 'rgba(0, 255, 136, 0.15)'
+    }
+};
+
 let state = { indoor: [], outdoor: null, charts: {} };
 
 const ui = {
@@ -96,15 +120,27 @@ const ui = {
     tempChart: document.getElementById('tempChart'),
     humChart: document.getElementById('humChart'),
     tempCompareChart: document.getElementById('tempCompareChart'),
-    humCompareChart: document.getElementById('humCompareChart')
+    humCompareChart: document.getElementById('humCompareChart'),
+    
+    // Comfort tooltip
+    comfortContent: document.getElementById('comfortContent'),
+    comfortTooltip: document.getElementById('comfortTooltip'),
+    tooltipTemp: document.getElementById('tooltipTemp'),
+    tooltipHum: document.getElementById('tooltipHum'),
+    tooltipAqi: document.getElementById('tooltipAqi')
 };
 
-const COLORS = {
-    inside: '#00A3FF',
-    outside: '#00D4AA',
-    insideBg: 'rgba(0, 163, 255, 0.15)',
-    outsideBg: 'rgba(0, 212, 170, 0.15)'
-};
+// Dynamic color getter based on current accent
+function getChartColors() {
+    const accent = ACCENTS[currentAccent];
+    const accentColor = ACCENT_COLORS[accent];
+    return {
+        inside: accentColor.primary,
+        insideBg: accentColor.primaryBg,
+        outside: accentColor.secondary,
+        outsideBg: accentColor.secondaryBg
+    };
+}
 
 // ========================================
 // INIT
@@ -118,6 +154,28 @@ async function init() {
     
     loadAccent();
     ui.colorToggle.addEventListener('click', cycleAccent);
+    
+    // Comfort tooltip click handler
+    ui.comfortContent.addEventListener('click', (e) => {
+        e.stopPropagation();
+        ui.comfortTooltip.classList.toggle('show');
+    });
+    
+    // Also show on hover for better discoverability
+    ui.comfortContent.addEventListener('mouseenter', () => {
+        ui.comfortTooltip.classList.add('show');
+    });
+    
+    ui.comfortContent.addEventListener('mouseleave', () => {
+        ui.comfortTooltip.classList.remove('show');
+    });
+    
+    // Close tooltip when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!ui.comfortContent.contains(e.target)) {
+            ui.comfortTooltip.classList.remove('show');
+        }
+    });
     
     updateClock();
     setInterval(updateClock, 1000);
@@ -146,6 +204,25 @@ function cycleAccent() {
     document.body.dataset.accent = ACCENTS[currentAccent];
     localStorage.setItem('accent', ACCENTS[currentAccent]);
     lucide.createIcons();
+    
+    // Update charts with new accent color
+    if (state.indoor.length > 0 && state.outdoor) {
+        renderCharts(state.indoor, state.outdoor);
+    }
+    
+    // Update comfort ring color
+    updateComfortRingColor();
+}
+
+function updateComfortRingColor() {
+    const score = parseInt(ui.comfortScore.textContent);
+    if (isNaN(score)) return;
+    
+    const accentColor = ACCENT_COLORS[ACCENTS[currentAccent]].primary;
+    
+    // Always use accent color for the ring, label indicates status
+    ui.comfortRing.style.stroke = accentColor;
+    ui.comfortRing.style.filter = `drop-shadow(0 0 6px ${accentColor})`;
 }
 
 function updateClock() {
@@ -333,36 +410,42 @@ function updateWeatherIcon(code) {
 
 function renderComfort(indoor, outdoor, aqi) {
     const latest = indoor[indoor.length - 1];
-    const aqiVal = aqi.current.us_aqi;
     
     // Calculate comfort score (0-100)
-    const tempScore = Math.max(0, 100 - Math.abs(latest.temp - 22) * 10);
-    const humScore = Math.max(0, 100 - Math.abs(latest.hum - 50) * 2);
+    const tempScore = Math.max(0, Math.round(100 - Math.abs(latest.temp - 22) * 10));
+    const humScore = Math.max(0, Math.round(100 - Math.abs(latest.hum - 50) * 2));
     
     // AQI is optional
     let aqiScore = 100;
     if (aqi && aqi.current) {
-        aqiScore = Math.max(0, 100 - aqi.current.us_aqi * 0.5);
+        aqiScore = Math.max(0, Math.round(100 - aqi.current.us_aqi * 0.5));
     }
     
     const score = Math.round((tempScore * 0.4 + humScore * 0.3 + aqiScore * 0.3));
     
     ui.comfortScore.textContent = score;
     
+    // Update tooltip with breakdown
+    ui.tooltipTemp.textContent = `${tempScore}/100`;
+    ui.tooltipHum.textContent = `${humScore}/100`;
+    ui.tooltipAqi.textContent = `${aqiScore}/100`;
+    
     const offset = 264 - (264 * score / 100);
     ui.comfortRing.style.strokeDashoffset = offset;
     
+    // Get current accent color for the ring - always use accent with glow
+    const accentColor = ACCENT_COLORS[ACCENTS[currentAccent]].primary;
+    ui.comfortRing.style.stroke = accentColor;
+    ui.comfortRing.style.filter = `drop-shadow(0 0 6px ${accentColor})`;
+    
+    // Label indicates the comfort level
     if (score >= 70) {
-        ui.comfortRing.style.stroke = '#00FF88';
         ui.comfortLabel.textContent = 'EXCELLENT';
     } else if (score >= 50) {
-        ui.comfortRing.style.stroke = '#00A3FF';
         ui.comfortLabel.textContent = 'GOOD';
     } else if (score >= 30) {
-        ui.comfortRing.style.stroke = '#FFB800';
         ui.comfortLabel.textContent = 'MODERATE';
     } else {
-        ui.comfortRing.style.stroke = '#FF4444';
         ui.comfortLabel.textContent = 'POOR';
     }
 }
@@ -471,6 +554,9 @@ function renderCharts(indoor, outdoor) {
     const slice = indoor.slice(-24);
     const labels = slice.map(d => new Date(d.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
     
+    // Get current accent colors
+    const COLORS = getChartColors();
+    
     Object.values(state.charts).forEach(c => c?.destroy());
     
     state.charts.temp = new Chart(ui.tempChart.getContext('2d'), {
@@ -492,13 +578,13 @@ function renderCharts(indoor, outdoor) {
         type: 'line',
         data: { labels, datasets: [{ 
             data: slice.map(d => d.hum), 
-            borderColor: COLORS.outside, 
-            backgroundColor: COLORS.outsideBg, 
+            borderColor: COLORS.inside,  // Now uses accent color
+            backgroundColor: COLORS.insideBg, 
             fill: true, 
             tension: 0.4, 
             pointRadius: 3,
             pointHoverRadius: 8,
-            pointBackgroundColor: COLORS.outside
+            pointBackgroundColor: COLORS.inside
         }] },
         options: lineOpts('%', 20, 100)
     });
