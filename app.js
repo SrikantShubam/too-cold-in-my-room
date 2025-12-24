@@ -124,6 +124,15 @@ async function init() {
     
     await refresh();
     setInterval(refresh, AppConfig.REFRESH_INTERVAL);
+    
+    // Countdown timer for next refresh
+    let countdown = AppConfig.REFRESH_INTERVAL / 1000;
+    const countdownEl = document.getElementById('nextRefresh');
+    setInterval(() => {
+        countdown--;
+        if (countdown <= 0) countdown = AppConfig.REFRESH_INTERVAL / 1000;
+        countdownEl.textContent = countdown;
+    }, 1000);
 }
 
 function loadAccent() {
@@ -466,13 +475,31 @@ function renderCharts(indoor, outdoor) {
     
     state.charts.temp = new Chart(ui.tempChart.getContext('2d'), {
         type: 'line',
-        data: { labels, datasets: [{ data: slice.map(d => d.temp), borderColor: COLORS.inside, backgroundColor: COLORS.insideBg, fill: true, tension: 0.4, pointRadius: 0 }] },
+        data: { labels, datasets: [{ 
+            data: slice.map(d => d.temp), 
+            borderColor: COLORS.inside, 
+            backgroundColor: COLORS.insideBg, 
+            fill: true, 
+            tension: 0.4, 
+            pointRadius: 3,
+            pointHoverRadius: 8,
+            pointBackgroundColor: COLORS.inside
+        }] },
         options: lineOpts('°C', 15, 35)
     });
     
     state.charts.hum = new Chart(ui.humChart.getContext('2d'), {
         type: 'line',
-        data: { labels, datasets: [{ data: slice.map(d => d.hum), borderColor: COLORS.outside, backgroundColor: COLORS.outsideBg, fill: true, tension: 0.4, pointRadius: 0 }] },
+        data: { labels, datasets: [{ 
+            data: slice.map(d => d.hum), 
+            borderColor: COLORS.outside, 
+            backgroundColor: COLORS.outsideBg, 
+            fill: true, 
+            tension: 0.4, 
+            pointRadius: 3,
+            pointHoverRadius: 8,
+            pointBackgroundColor: COLORS.outside
+        }] },
         options: lineOpts('%', 20, 100)
     });
     
@@ -540,11 +567,33 @@ function findHourIdx(times, target) {
 
 function lineOpts(unit, min, max) {
     return {
-        responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
+        responsive: true, 
+        maintainAspectRatio: false,
+        interaction: {
+            mode: 'index',
+            intersect: false
+        },
+        plugins: { 
+            legend: { display: false },
+            tooltip: {
+                enabled: true,
+                backgroundColor: 'rgba(0,0,0,0.9)',
+                titleColor: '#fff',
+                bodyColor: '#fff',
+                borderColor: 'var(--c-accent)',
+                borderWidth: 1,
+                padding: 12,
+                displayColors: false,
+                titleFont: { size: 14, weight: 'bold' },
+                bodyFont: { size: 16 },
+                callbacks: {
+                    label: (ctx) => ctx.parsed.y.toFixed(1) + unit
+                }
+            }
+        },
         scales: {
-            x: { grid: { display: false }, ticks: { color: '#444', font: { size: 9 } } },
-            y: { min, max, grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#444', font: { size: 9 }, callback: v => v + unit } }
+            x: { grid: { display: false }, ticks: { color: '#666', font: { size: 9 } } },
+            y: { min, max, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#666', font: { size: 9 }, callback: v => v + unit } }
         }
     };
 }
